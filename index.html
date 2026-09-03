@@ -14,6 +14,12 @@
        padding:20px 16px 48px;max-width:620px;margin:0 auto;line-height:1.5}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   .etiqueta{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#8A8270}
+  .marca{display:flex;align-items:center;gap:9px;margin-bottom:18px}
+  .marca img{width:30px;height:30px;display:block}
+  .marca span{font-size:17px;font-weight:700;letter-spacing:.02em;color:#1F3358}
+  .pieSitio{margin-top:28px;padding-top:14px;border-top:1px solid #DED7C6;
+            font-size:12px;color:#8A8270;text-align:center}
+  .pieSitio a{color:#2E6B4A}
   .banda{background:#B03A2C;color:#FFF6F4;border-radius:10px;padding:14px 16px;margin-bottom:16px}
   .banda h2{font-size:17px;margin-top:2px}
   .banda p{font-size:13px;opacity:.9}
@@ -43,7 +49,20 @@
 </style>
 </head>
 <body>
+<!-- La marca va arriba y **siempre**, también en la página de error: quien escanea es un
+     veterinario, y es el único lugar del producto donde lo ve alguien que todavía no es
+     usuario. Un carné sin nombre no le dice de dónde salió. -->
+<header class="marca">
+  <img src="./logo.png" alt="" aria-hidden="true">
+  <span>Hakübe</span>
+</header>
+
 <main id="carne" aria-live="polite"></main>
+
+<footer class="pieSitio">
+  Expediente clínico de mascotas · Costa Rica ·
+  <a href="./privacidad.html">Privacidad</a>
+</footer>
 
 <script>
 /**
@@ -157,7 +176,7 @@ function paginaExpediente(r) {
   </div>`).join('')}
 
   <div class="carne">
-    <div class="cabecera"><span>Hakübe · Carné digital</span><span>CR</span></div>
+    <div class="cabecera"><span>Carné digital</span><span>CR</span></div>
     <div class="identidad">
       ${r.foto ? `<img class="foto" src="${escapar(r.foto)}" alt="Foto de ${escapar(r.mascota.nombre)}">` : ''}
       <div>
