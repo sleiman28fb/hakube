@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Hakübe · Carné digital</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  .foto{width:88px;height:88px;object-fit:cover;border-radius:10px;flex:0 0 auto}
+  .identidad{display:flex;gap:14px;align-items:center}
+  body{background:#F5F1E8;color:#14120F;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+       padding:20px 16px 48px;max-width:620px;margin:0 auto;line-height:1.5}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .etiqueta{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#8A8270}
+  .banda{background:#B03A2C;color:#FFF6F4;border-radius:10px;padding:14px 16px;margin-bottom:16px}
+  .banda h2{font-size:17px;margin-top:2px}
+  .banda p{font-size:13px;opacity:.9}
+  .carne{background:#FFFDF8;border:1px solid #D6CFBE;border-radius:14px;overflow:hidden;margin-bottom:16px}
+  .cabecera{background:#F0EADC;border-bottom:1px solid #E4DDCC;padding:12px 16px;
+            display:flex;justify-content:space-between;font-size:10px;letter-spacing:.2em;
+            text-transform:uppercase;color:#8A8270}
+  .identidad{padding:18px 16px}
+  .identidad h1{font-size:28px;letter-spacing:-.02em}
+  .identidad p{color:#5C564A;font-size:15px}
+  .rejilla{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #E4DDCC}
+  .celda{padding:12px 16px;border-bottom:1px solid #E4DDCC}
+  .celda:nth-child(odd){border-right:1px solid #E4DDCC}
+  .celda .v{font-size:15px;margin-top:2px}
+  section{margin-bottom:22px}
+  section>.etiqueta{margin-bottom:8px;display:block}
+  .item{background:#FFFDF8;border:1px solid #DED7C6;border-radius:10px;padding:12px 14px;margin-bottom:8px}
+  .item.grave{border-color:#B03A2C;border-left:4px solid #B03A2C}
+  .item .t{font-weight:600;font-size:16px}
+  .item .d{color:#5C564A;font-size:13px;margin-top:2px}
+  .chip{display:inline-block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+        border-radius:4px;padding:3px 7px;border:1px solid;font-weight:700}
+  .chip.clinica{background:#EDF3EE;border-color:#A8C4B2;color:#2E6B4A}
+  .chip.dueno{background:transparent;border-color:#D6CFBE;border-style:dashed;color:#8A8270}
+  .vacio{color:#8A8270;font-size:14px}
+  footer{border-top:1px solid #DED7C6;padding-top:14px;color:#8A8270;font-size:12px}
+</style>
+</head>
+<body>
+<main id="carne" aria-live="polite"></main>
+
+<script>
+/**
+ * El carné que ve quien escanea el QR.
+ *
+ * **Por qué existe esta página y no la arma la función.** Las Edge Functions de Supabase no
+ * pueden servir HTML en el dominio compartido `*.supabase.co`: un GET que devuelva
+ * `text/html` llega reescrito a `text/plain`, con `nosniff`, y el veterinario ve el código
+ * fuente en vez del expediente. Está documentado y solo lo levanta un dominio propio de
+ * pago. Así que la función devuelve datos y la presentación vive acá.
+ *
+ * **El token viaja en el fragmento (`#t=`), no en la query.** Los fragmentos no se mandan al
+ * servidor, así que quien hospeda esta página nunca ve el código que abre el expediente de
+ * una mascota. Solo lo lee el navegador para pedírselo a Supabase, que sí tiene que
+ * recibirlo porque es quien decide si vale.
+ *
+ * No hay llaves acá adentro y no puede haberlas: la función es la única puerta y decide
+ * sola qué mostrar.
+ */
+const NUBE = 'https://adbetoguusvcqvwogbor.supabase.co/functions/v1/acceso';
+const LOCAL = 'http://127.0.0.1:54321/functions/v1/acceso';
+
+/**
+ * Servida desde localhost habla con el Supabase local. Es lo que permite probar esta
+ * página de punta a punta —token real, consulta real, carné real— sin desplegar nada.
+ * En producción nunca se sirve desde localhost, así que siempre cae en la nube.
+ */
+const FUNCION = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? LOCAL : NUBE;
+
+const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','set','oct','nov','dic'];
+
+/** Fechas al mediodía UTC, para que ningún huso corra el día. */
+function fecha(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso.slice(0, 10) + 'T12:00:00Z');
+  return d.getUTCDate() + ' ' + MESES[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+}
+
+/**
+ * Todo lo que viene del servidor pasa por acá antes de entrar al HTML.
+ *
+ * El nombre de una mascota, una sustancia y un texto de contacto los escribe una persona:
+ * son datos, nunca marcado.
+ */
+function escapar(v) {
+  return String(v ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+const mayuscula = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+
+const chip = (verificada) =>
+  verificada
+    ? '<span class="chip clinica">✓ Clínica</span>'
+    : '<span class="chip dueno">Sin verificar</span>';
+
+function aviso(titulo, detalle) {
+  return `<div class="carne"><div class="identidad">
+    <div><h1 style="font-size:22px">${escapar(titulo)}</h1>
+    <p style="margin-top:8px">${escapar(detalle)}</p></div>
+  </div></div>`;
+}
+
+/**
+ * Con la mascota reportada como perdida se muestra **solo** lo que sirve para devolverla.
+ * Ningún dato clínico: quien escanea acá no es un veterinario, es alguien que se encontró
+ * un animal en la calle y está tratando de decidir si es el que una familia busca.
+ */
+function paginaPerdida(r) {
+  const m = r.mascota;
+  const senas = [m.especie, m.raza, m.color,
+    m.sexo === 'hembra' ? 'hembra' : m.sexo === 'macho' ? 'macho' : null].filter(Boolean);
+
+  return `<div class="banda">
+    <div class="etiqueta" style="color:inherit;opacity:.85">Mascota perdida</div>
+    <h2>${escapar(m.nombre)} está perdida</h2>
+    <p>Su familia la está buscando. Gracias por escanear.</p>
+  </div>
+  <div class="carne"><div class="identidad">
+    ${r.foto ? `<img class="foto" src="${escapar(r.foto)}" alt="Foto de ${escapar(m.nombre)}">` : ''}
+    <div>
+      <h1>${escapar(m.nombre)}</h1>
+      <p>${mayuscula(senas.map(escapar).join(' · '))}</p>
+      ${m.fecha_nacimiento ? `<p>Nacida el ${fecha(m.fecha_nacimiento)}</p>` : ''}
+    </div>
+  </div></div>
+  ${m.microchip ? `<section>
+    <span class="etiqueta">Microchip</span>
+    <div class="item"><div class="t mono">${escapar(m.microchip)}</div>
+    <div class="d">Cualquier veterinaria puede leerlo y confirmar de quién es.</div></div>
+  </section>` : ''}
+  <section>
+    <span class="etiqueta">Contacto</span>
+    <div class="item"><div class="t">${escapar(m.contacto_perdida ?? 'Sin contacto cargado')}</div></div>
+  </section>
+  ${m.recompensa ? `<section>
+    <span class="etiqueta">Recompensa</span>
+    <div class="item"><div class="t">${escapar(m.recompensa)}</div></div>
+  </section>` : ''}
+  <footer>No se muestra el expediente clínico mientras la mascota esté reportada como perdida.</footer>`;
+}
+
+function paginaExpediente(r) {
+  const graves = r.alergias.filter((a) => a.severidad === 'grave');
+  const otras = r.alergias.filter((a) => a.severidad !== 'grave');
+
+  return `${graves.map((a) => `<div class="banda">
+    <div class="etiqueta" style="color:inherit;opacity:.85">Alergia grave</div>
+    <h2>${escapar(a.sustancia)}${a.reaccion ? ' — ' + escapar(a.reaccion.toLowerCase()) : ''}</h2>
+    <p>${a.verificada ? 'Confirmada por una clínica' : 'Anotada por el dueño, sin verificar'}</p>
+  </div>`).join('')}
+
+  <div class="carne">
+    <div class="cabecera"><span>Hakübe · Carné digital</span><span>CR</span></div>
+    <div class="identidad">
+      ${r.foto ? `<img class="foto" src="${escapar(r.foto)}" alt="Foto de ${escapar(r.mascota.nombre)}">` : ''}
+      <div>
+        <h1>${escapar(r.mascota.nombre)}</h1>
+        <p>${escapar(r.mascota.especie)}${r.mascota.raza ? ' · ' + escapar(r.mascota.raza) : ''}</p>
+        <p>${escapar(r.mascota.sexo ?? '')}${r.mascota.fecha_nacimiento ? ' · nacida el ' + fecha(r.mascota.fecha_nacimiento) : ''}</p>
+      </div>
+    </div>
+    <div class="rejilla">
+      <div class="celda"><span class="etiqueta">Peso</span><div class="v">${r.peso ? escapar(r.peso.kg) + ' kg' : '—'}</div></div>
+      <div class="celda"><span class="etiqueta">Medido</span><div class="v">${fecha(r.peso ? r.peso.medido_en : null)}</div></div>
+      <div class="celda"><span class="etiqueta">Color</span><div class="v">${escapar(r.mascota.color ?? '—')}</div></div>
+      <div class="celda"><span class="etiqueta">Microchip</span><div class="v mono">${escapar(r.mascota.microchip ?? '—')}</div></div>
+    </div>
+  </div>
+
+  <section>
+    <span class="etiqueta">Tratamientos en curso</span>
+    ${r.tratamientos.length === 0 ? '<p class="vacio">Ninguno.</p>'
+      : r.tratamientos.map((t) => `<div class="item"><div class="t">${escapar(t.medicamento)}</div>
+        <div class="d">${[t.dosis, t.via, t.frecuencia_horas ? 'cada ' + t.frecuencia_horas + ' h' : null]
+          .filter(Boolean).map(escapar).join(' · ')}</div></div>`).join('')}
+  </section>
+
+  <section>
+    <span class="etiqueta">Vacunas</span>
+    ${r.vacunas.length === 0 ? '<p class="vacio">Ninguna registrada.</p>'
+      : r.vacunas.map((v) => `<div class="item"><div class="t">${escapar(v.nombre)} ${chip(v.verificada)}</div>
+        <div class="d">Aplicada ${fecha(v.aplicada_en)} · próxima ${fecha(v.proxima_en)}</div></div>`).join('')}
+  </section>
+
+  ${otras.length > 0 ? `<section><span class="etiqueta">Otras alergias</span>${otras.map((a) =>
+    `<div class="item"><div class="t">${escapar(a.sustancia)} ${chip(a.verificada)}</div>
+     <div class="d">${escapar(a.severidad)}${a.reaccion ? ' · ' + escapar(a.reaccion) : ''}</div></div>`).join('')}</section>` : ''}
+
+  <footer>
+    Acceso temporal otorgado por el dueño. Vence el ${fecha(r.expira_en)}.<br>
+    Lo marcado como <b>sin verificar</b> lo anotó el dueño y no tiene valor clínico.
+  </footer>`;
+}
+
+async function mostrar() {
+  const destino = document.getElementById('carne');
+  // El token va en el fragmento. Se acepta también `?t=` para los QR viejos, que apuntaban
+  // derecho a la función y llegan acá por redirección.
+  const token =
+    new URLSearchParams(location.hash.slice(1)).get('t') ??
+    new URLSearchParams(location.search).get('t');
+
+  if (!token) {
+    destino.innerHTML = aviso(
+      'Falta el código',
+      'Este enlace está incompleto. Pedile a la persona que te muestre el QR otra vez.',
+    );
+    return;
+  }
+
+  try {
+    const r = await fetch(FUNCION + '?formato=json&t=' + encodeURIComponent(token), {
+      cache: 'no-store',
+    });
+    const datos = await r.json();
+
+    if (!r.ok) {
+      destino.innerHTML = aviso(
+        'Este acceso ya no sirve',
+        'El enlace venció o el dueño lo revocó. Pedile que te muestre el QR otra vez desde la app.',
+      );
+      return;
+    }
+
+    document.title = escapar(datos.mascota.nombre) + ' · Expediente';
+    destino.innerHTML = datos.mascota.perdida_desde ? paginaPerdida(datos) : paginaExpediente(datos);
+  } catch {
+    // Sin señal no hay nada que mostrar: el expediente no se guarda en este teléfono, y no
+    // debería. Se dice qué pasó en vez de dejar la pantalla en blanco.
+    destino.innerHTML = aviso(
+      'No se pudo cargar',
+      'Revisá la señal y volvé a intentar. El expediente no se guarda en este teléfono.',
+    );
+  }
+}
+
+mostrar();
+</script>
+</body>
+</html>

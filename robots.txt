@@ -1,0 +1,4 @@
+# El carné de una mascota no se indexa. Cada página existe solo mientras dure un acceso
+# temporal y su contenido depende de un token que no está en ninguna URL rastreable.
+User-agent: *
+Disallow: /
