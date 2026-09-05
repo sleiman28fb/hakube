@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Hakübe · Invitación</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#F5F1E8;color:#14120F;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+       padding:20px 16px 48px;max-width:620px;margin:0 auto;line-height:1.5}
+  .marca{display:flex;align-items:center;gap:9px;margin-bottom:26px}
+  .marca img{width:30px;height:30px;display:block}
+  .marca span{font-size:17px;font-weight:700;letter-spacing:.02em;color:#1F3358}
+  .tarjeta{background:#FFFDF8;border:1px solid #D6CFBE;border-radius:14px;padding:22px 18px}
+  h1{font-size:26px;letter-spacing:-.02em;color:#1F3358;margin-bottom:10px}
+  p{color:#5C564A;font-size:15px;margin-bottom:14px}
+  .boton{display:block;background:#2E6B4A;color:#FFFDF8;text-decoration:none;text-align:center;
+         font-size:16px;font-weight:600;padding:15px 16px;border-radius:11px;margin:18px 0 10px}
+  .ayuda{font-size:13px;color:#8A8270}
+  .pieSitio{margin-top:28px;padding-top:14px;border-top:1px solid #DED7C6;
+            font-size:12px;color:#8A8270;text-align:center}
+  .pieSitio a{color:#2E6B4A}
+  .aviso{background:#FDEEEC;border:1px solid #E2B4AC;border-radius:11px;padding:14px 16px;color:#8A3125}
+</style>
+</head>
+<body>
+
+<header class="marca">
+  <img src="./logo.png" alt="" aria-hidden="true">
+  <span>Hakübe</span>
+</header>
+
+<div class="tarjeta" id="tarjeta">
+  <h1>Te invitaron a cuidar una mascota</h1>
+  <p>
+    Con este enlace vas a poder ver su expediente —vacunas, tratamientos, alergias— y anotar
+    lo que pase mientras la cuidás.
+  </p>
+  <a class="boton" id="abrir" href="#">Abrir en Hakübe</a>
+  <p class="ayuda">
+    Si todavía no tenés la app, instalala primero y volvé a tocar este enlace. El enlace vence
+    a la semana y sirve una sola vez.
+  </p>
+</div>
+
+<footer class="pieSitio">
+  Expediente clínico de mascotas · Costa Rica ·
+  <a href="./privacidad.html">Privacidad</a>
+</footer>
+
+<script>
+/**
+ * Esta página **no sabe a qué mascota invita, y es a propósito.**
+ *
+ * La tabla de invitaciones solo la lee el dueño: quien recibe el enlace la canjea desde la
+ * app, con su sesión. Aunque se pudiera, tampoco convendría — un enlace que llega al chat
+ * equivocado no tiene por qué decir el nombre del animal ni de quién es.
+ *
+ * Lo único que hace es pasar el token del fragmento al esquema de la app. **Del fragmento y
+ * no de la query**, igual que el carné: los fragmentos no viajan al servidor, así que quien
+ * hospeda esta página nunca ve el código que suma a alguien a un expediente ajeno.
+ */
+(function () {
+  var token = new URLSearchParams(location.hash.slice(1)).get('i');
+
+  // Los enlaces viejos llevaban el token en la query. Siguen sirviendo.
+  if (!token) token = new URLSearchParams(location.search).get('i');
+
+  if (!token || !/^[a-zA-Z0-9]{16,64}$/.test(token)) {
+    document.getElementById('tarjeta').innerHTML =
+      '<div class="aviso"><strong>Este enlace está incompleto.</strong>' +
+      '<p style="margin:8px 0 0;color:inherit">Pedile a quien te invitó que te lo mande de nuevo, ' +
+      'completo. A veces se corta al pegarlo en un chat.</p></div>';
+    return;
+  }
+
+  document.getElementById('abrir').href = 'petid:///invitacion/' + encodeURIComponent(token);
+})();
+</script>
+</body>
+</html>
