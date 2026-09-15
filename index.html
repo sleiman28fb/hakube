@@ -47,6 +47,11 @@
   .chip.clinica{background:#EDF3EE;border-color:#A8C4B2;color:#2E6B4A}
   .chip.dueno{background:transparent;border-color:#D6CFBE;border-style:dashed;color:#8A8270}
   .vacio{color:#8A8270;font-size:14px}
+  /* El documento es una fila que se toca. Es <button> y no <div> para que llegue por teclado
+     y el lector de pantalla lo anuncie como algo accionable. */
+  .documento{display:block;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer}
+  .documento:active{opacity:.85}
+  .documento .abrir{color:#2E6B4A;font-size:13px;font-weight:600;margin-top:6px}
   footer{border-top:1px solid #DED7C6;padding-top:14px;color:#8A8270;font-size:12px}
 </style>
 </head>
@@ -176,6 +181,59 @@ function paginaPerdida(r) {
   <footer>No se muestra el expediente clínico mientras la mascota esté reportada como perdida.</footer>`;
 }
 
+/**
+ * Cómo se lee la clase de un documento.
+ *
+ * Las mismas palabras que usa la app, escritas otra vez acá: este archivo no comparte código
+ * con ella —vive en otro repositorio— y hacerlo importar algo por una lista de siete palabras
+ * sería peor que repetirlas. Si cambian allá, cambian acá.
+ */
+function claseDeDocumento(clase) {
+  return {
+    carne: 'Carné de papel',
+    laboratorio: 'Laboratorio',
+    radiografia: 'Radiografía',
+    ultrasonido: 'Ultrasonido',
+    receta: 'Receta',
+    consentimiento: 'Consentimiento',
+    otro: 'Otro',
+  }[clase] ?? 'Sin clasificar';
+}
+
+/**
+ * Abre un documento: le pide el enlace a la función y navega.
+ *
+ * **La pestaña se abre antes de pedir nada.** Si se abriera después de la respuesta, el
+ * navegador lo trataría como una ventana emergente y la bloquearía: el permiso solo vale
+ * mientras dura el gesto de la persona. Se abre vacía, y recién cuando llega el enlace se le
+ * asigna; si falla, se cierra y se avisa en el botón.
+ *
+ * **El enlace no se guarda ni se reusa.** Dura cinco minutos y se pide de nuevo en cada
+ * apertura, que es lo que hace que cada una quede en la bitácora del dueño.
+ */
+async function abrirDocumento(boton) {
+  const pestana = window.open('', '_blank');
+  const aviso = boton.querySelector('.abrir');
+  const antes = aviso.textContent;
+  aviso.textContent = 'Abriendo…';
+
+  try {
+    const r = await fetch(
+      FUNCION + '?formato=json&archivo=' + encodeURIComponent(boton.dataset.archivo) +
+        '&t=' + encodeURIComponent(tokenActual),
+      { cache: 'no-store' },
+    );
+    const datos = await r.json();
+    if (!r.ok || !datos.url) throw new Error('sin enlace');
+    pestana.location = datos.url;
+    aviso.textContent = antes;
+  } catch {
+    pestana?.close();
+    aviso.textContent = 'No se pudo abrir';
+    setTimeout(() => { aviso.textContent = antes; }, 3000);
+  }
+}
+
 function paginaExpediente(r) {
   const graves = r.alergias.filter((a) => a.severidad === 'grave');
   const otras = r.alergias.filter((a) => a.severidad !== 'grave');
@@ -219,6 +277,17 @@ function paginaExpediente(r) {
         <div class="d">Aplicada ${fecha(v.aplicada_en)} · próxima ${fecha(v.proxima_en)}</div></div>`).join('')}
   </section>
 
+  <section>
+    <span class="etiqueta">Documentos</span>
+    ${r.documentos.length === 0 ? '<p class="vacio">Ninguno adjunto.</p>'
+      : r.documentos.map((d) => `<button class="item documento" data-archivo="${escapar(d.id)}">
+          <div class="t">${escapar(d.titulo)} ${chip(d.verificado)}</div>
+          <div class="d">${[claseDeDocumento(d.clase), fecha(d.fecha), d.archivo]
+            .filter(Boolean).map(escapar).join(' · ')}</div>
+          <div class="abrir">Abrir</div>
+        </button>`).join('')}
+  </section>
+
   ${otras.length > 0 ? `<section><span class="etiqueta">Otras alergias</span>${otras.map((a) =>
     `<div class="item"><div class="t">${escapar(a.sustancia)} ${chip(a.verificada)}</div>
      <div class="d">${escapar(a.severidad)}${a.reaccion ? ' · ' + escapar(a.reaccion) : ''}</div></div>`).join('')}</section>` : ''}
@@ -229,6 +298,9 @@ function paginaExpediente(r) {
   </footer>`;
 }
 
+/** El token de esta visita. Lo necesitan las aperturas de documentos, después de pintar. */
+let tokenActual = null;
+
 async function mostrar() {
   const destino = document.getElementById('carne');
   // El token va en el fragmento. Se acepta también `?t=` para los QR viejos, que apuntaban
@@ -236,6 +308,7 @@ async function mostrar() {
   const token =
     new URLSearchParams(location.hash.slice(1)).get('t') ??
     new URLSearchParams(location.search).get('t');
+  tokenActual = token;
 
   if (!token) {
     // **Sin token hay dos casos distintos y decían lo mismo.** Una dirección que no existe
@@ -279,6 +352,13 @@ async function mostrar() {
 
     document.title = escapar(datos.mascota.nombre) + ' · Expediente';
     destino.innerHTML = datos.mascota.perdida_desde ? paginaPerdida(datos) : paginaExpediente(datos);
+
+    // Delegado y no uno por botón: el HTML se arma recién acá, y así sigue funcionando si
+    // mañana la lista se vuelve a pintar.
+    destino.addEventListener('click', (e) => {
+      const boton = e.target.closest('.documento');
+      if (boton) abrirDocumento(boton);
+    });
   } catch {
     // Sin señal no hay nada que mostrar: el expediente no se guarda en este teléfono, y no
     // debería. Se dice qué pasó en vez de dejar la pantalla en blanco.
