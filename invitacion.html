@@ -19,6 +19,7 @@
   .boton{display:block;background:#2E6B4A;color:#FFFDF8;text-decoration:none;text-align:center;
          font-size:16px;font-weight:600;padding:15px 16px;border-radius:11px;margin:18px 0 10px}
   .ayuda{font-size:13px;color:#8A8270}
+  .ayuda a{color:#2E6B4A}
   .pieSitio{margin-top:28px;padding-top:14px;border-top:1px solid #DED7C6;
             font-size:12px;color:#8A8270;text-align:center}
   .pieSitio a{color:#2E6B4A}
@@ -33,15 +34,18 @@
 </header>
 
 <div class="tarjeta" id="tarjeta">
-  <h1>Te invitaron a cuidar una mascota</h1>
-  <p>
+  <h1 id="titulo">Te invitaron a cuidar una mascota</h1>
+  <p id="explicacion">
     Con este enlace vas a poder ver su expediente —vacunas, tratamientos, alergias— y anotar
     lo que pase mientras la cuidás.
   </p>
   <a class="boton" id="abrir" href="#">Abrir en Hakübe</a>
   <p class="ayuda">
-    Si todavía no tenés la app, instalala primero y volvé a tocar este enlace. El enlace vence
-    a la semana y sirve una sola vez.
+    Si todavía no tenés la app, instalala primero —desde el
+    <a href="https://apps.apple.com/cr/app/id6805946367">App Store</a> o desde
+    <a href="https://play.google.com/store/apps/details?id=cr.petid.app">Google Play</a>— y
+    volvé a tocar este enlace. <span id="vigencia">El enlace vence a la semana y sirve una sola
+    vez.</span>
   </p>
 </div>
 
@@ -74,6 +78,16 @@
       '<p style="margin:8px 0 0;color:inherit">Pedile a quien te invitó que te lo mande de nuevo, ' +
       'completo. A veces se corta al pegarlo en un chat.</p></div>';
     return;
+  }
+
+  // `r=1` lo pone el panel cuando la clínica invita a reclamar un expediente que abrió ella.
+  // Solo cambia el texto: quién invita y para qué lo dice la app, que sí lee la invitación.
+  if (new URLSearchParams(location.hash.slice(1)).get('r') === '1') {
+    document.getElementById('titulo').textContent = 'Tu veterinaria abrió el expediente de tu mascota';
+    document.getElementById('explicacion').textContent =
+      'Con este enlace lo reclamás: queda a tu nombre, con todo lo que anotó la veterinaria, ' +
+      'y desde ahí decidís quién más lo ve.';
+    document.getElementById('vigencia').textContent = 'El enlace sirve una sola vez.';
   }
 
   document.getElementById('abrir').href = 'petid:///invitacion/' + encodeURIComponent(token);
